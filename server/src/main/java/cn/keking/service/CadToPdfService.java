@@ -2,12 +2,12 @@ package cn.keking.service;
 
 import cn.keking.config.ConfigConstants;
 import cn.keking.model.FileAttribute;
+import cn.keking.utils.FileConvertStatusManager;
 import cn.keking.utils.RemoveSvgAdSimple;
 import com.aspose.cad.*;
 import com.aspose.cad.fileformats.cad.CadDrawTypeMode;
 import com.aspose.cad.fileformats.tiff.enums.TiffExpectedFormat;
 import com.aspose.cad.imageoptions.*;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,225 +18,295 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * CAD文件转换服务
- * @author yudian-it
+ * CAD文件转换服务 - 增强版
+ * 支持实时状态跟踪和状态锁定机制
  */
 @Component
 public class CadToPdfService {
     private static final Logger logger = LoggerFactory.getLogger(CadToPdfService.class);
 
-    /**
-     * CAD转换线程池
-     */
-    private ExecutorService pool;
+    // 使用虚拟线程执行器
+    private final ExecutorService virtualThreadExecutor;
+    // 存储正在运行的转换任务
+    private final ConcurrentHashMap<String, Future<?>> runningTasks = new ConcurrentHashMap<>();
+    // 存储任务的完成状态
+    private final ConcurrentHashMap<String, AtomicBoolean> taskCompletionStatus = new ConcurrentHashMap<>();
+    // 并发控制信号量
+    private final Semaphore concurrentLimit;
+    // 转换超时时间（秒）
+    private final long conversionTimeout;
 
-    /**
-     * 初始化线程池
-     */
-    @PostConstruct
-    public void init() {
-        try {
-            int threadCount = getThreadPoolSize();
+    public CadToPdfService() {
+        int maxConcurrent = getConcurrentLimit();
+        this.concurrentLimit = new Semaphore(maxConcurrent);
+        this.virtualThreadExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.conversionTimeout = getConversionTimeout();
 
-            // 使用 ThreadPoolExecutor 而不是 FixedThreadPool，便于控制队列和拒绝策略
-            int queueCapacity = getQueueCapacity();
-            // 核心线程数
-            // 最大线程数（与核心线程数相同，实现固定大小）
-            // 空闲线程存活时间（秒）
-            // 有界队列，避免内存溢出
-            // 拒绝策略：由调用线程执行
-            /**
-             * 线程池监控
-             */
-            ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(
-                    threadCount,      // 核心线程数
-                    threadCount,      // 最大线程数（与核心线程数相同，实现固定大小）
-                    60L,              // 空闲线程存活时间（秒）
-                    TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(queueCapacity),  // 有界队列，避免内存溢出
-                    // 修改线程工厂部分
-                    r -> {
-                        Thread t = new Thread(r);
-                        // 使用时间戳和随机数生成唯一标识
-                        String threadId = System.currentTimeMillis() + "-" +
-                                ThreadLocalRandom.current().nextInt(1000);
-                        t.setName("cad-convert-pool-" + threadId);
-                        t.setUncaughtExceptionHandler((thread, throwable) ->
-                                logger.error("CAD转换线程未捕获异常: {}", thread.getName(), throwable));
-                        return t;
-                    },
-                    new ThreadPoolExecutor.CallerRunsPolicy()  // 拒绝策略：由调用线程执行
-            );
-
-            // 允许核心线程超时回收
-            threadPoolExecutor.allowCoreThreadTimeOut(true);
-
-            pool = threadPoolExecutor;
-
-            logger.info("CAD转换线程池初始化完成，线程数: {}, 队列容量: {}",
-                    threadCount, queueCapacity);
-
-        } catch (Exception e) {
-            logger.error("CAD转换线程池初始化失败", e);
-            // 提供默认值
-            int defaultThreads = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
-            pool = Executors.newFixedThreadPool(defaultThreads);
-            logger.warn("使用默认线程池配置，线程数: {}", defaultThreads);
-        }
+        logger.info("CAD转换服务初始化完成，最大并发数: {}，转换超时: {}秒", maxConcurrent, conversionTimeout);
     }
 
     /**
-     * 获取线程池大小配置
-     */
-    private int getThreadPoolSize() {
-        try {
-            int threadCount = ConfigConstants.getCadThread();
-            if (threadCount <= 0) {
-                threadCount = Runtime.getRuntime().availableProcessors();
-                logger.warn("CAD线程数配置无效，使用CPU核心数: {}", threadCount);
-            }
-            // 限制最大线程数，避免资源耗尽
-            int maxThreads = Runtime.getRuntime().availableProcessors() * 2;
-            if (threadCount > maxThreads) {
-                logger.warn("CAD线程数配置过大({})，限制为: {}", threadCount, maxThreads);
-                threadCount = maxThreads;
-            }
-            return threadCount;
-        } catch (Exception e) {
-            logger.error("获取CAD线程数配置失败", e);
-            return Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
-        }
-    }
-
-    /**
-     * 获取队列容量
-     */
-    private int getQueueCapacity() {
-        // 根据线程数动态计算队列容量
-        int threadCount = getThreadPoolSize();
-        return threadCount * 10;  // 每个线程10个待处理任务
-    }
-
-    /**
-     * 优雅关闭线程池
-     */
-    @PreDestroy
-    public void shutdown() {
-        if (pool != null && !pool.isShutdown()) {
-            gracefulShutdown(pool, getShutdownTimeout());
-        }
-    }
-
-    /**
-     * 获取关闭超时时间
-     */
-    private long getShutdownTimeout() {
-        try {
-            return Long.parseLong(ConfigConstants.getCadTimeout());
-        } catch (Exception e) {
-            logger.warn("获取CAD关闭超时时间失败，使用默认值60秒", e);
-            return 60L;
-        }
-    }
-
-    /**
-     * 通用线程池优雅关闭方法
-     */
-    private void gracefulShutdown(ExecutorService executor, long timeoutSeconds) {
-        logger.info("开始关闭{}...", "CAD转换线程池");
-
-        // 停止接收新任务
-        executor.shutdown();
-
-        try {
-            // 等待现有任务完成
-            if (!executor.awaitTermination(timeoutSeconds, TimeUnit.SECONDS)) {
-                logger.warn("{}超时未关闭，尝试强制关闭...", "CAD转换线程池");
-
-                // 取消所有未完成的任务
-                executor.shutdownNow();
-
-                // 再次等待
-                if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
-                    logger.error("{}无法正常关闭，可能存在挂起的任务", "CAD转换线程池");
-                } else {
-                    logger.info("{}已强制关闭", "CAD转换线程池");
-                }
-            } else {
-                logger.info("{}已正常关闭", "CAD转换线程池");
-            }
-        } catch (InterruptedException e) {
-            logger.error("{}关闭时被中断", "CAD转换线程池", e);
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * CAD文件转换
-     *
-     * @param inputFilePath  输入CAD文件路径
+     * CAD文件转换 - 异步版本
+     * @param inputFilePath 输入文件路径
      * @param outputFilePath 输出文件路径
-     * @param cadPreviewType 预览类型 (svg/pdf/tif)
-     * @param fileAttribute  文件属性
-     * @return 转换成功返回true，失败返回false
+     * @param cadPreviewType 预览类型（svg/pdf/tif/tiff）
+     * @param fileAttribute 文件属性
+     * @return 转换结果的CompletableFuture
      */
-    public boolean cadToPdf(String inputFilePath, String outputFilePath,
-                            String cadPreviewType, FileAttribute fileAttribute) {
+    public CompletableFuture<Boolean> cadToPdfAsync(String inputFilePath, String outputFilePath,
+                                                    String cadPreviewType, FileAttribute fileAttribute) {
+        String fileName = new File(inputFilePath).getName();
+        // 立即创建初始状态，防止重复执行
+        FileConvertStatusManager.startConvert(fileName);
+        // 创建可取消的任务
+        CompletableFuture<Boolean> taskFuture = new CompletableFuture<>();
+        taskCompletionStatus.put(fileName, new AtomicBoolean(false));
 
-        final InterruptionTokenSource source = new InterruptionTokenSource();
+        // 提交任务到线程池
+        Future<?> future = virtualThreadExecutor.submit(() -> {
+            try {
+                // 添加初始状态更新
+                FileConvertStatusManager.updateProgress(fileName, "正在启动转换任务", 5);
+                boolean result = convertCadWithConcurrencyControl(inputFilePath, outputFilePath,
+                        cadPreviewType, fileAttribute);
+                if (result) {
+                    taskFuture.complete(true);
+                    taskCompletionStatus.get(fileName).set(true);
+                } else {
+                    taskFuture.complete(false);
+                }
+            } catch (Exception e) {
+                logger.error("CAD转换任务执行失败: {}", fileName, e);
+                FileConvertStatusManager.markError(fileName, "转换过程异常: " + e.getMessage());
+                taskFuture.completeExceptionally(e);
+            } finally {
+                // 移除任务记录
+                runningTasks.remove(fileName);
+                taskCompletionStatus.remove(fileName);
+            }
+        });
+
+        // 记录正在运行的任务
+        runningTasks.put(fileName, future);
+
+        // 设置超时取消
+        scheduleTimeoutCheck(fileName, taskFuture, future, outputFilePath);
+
+        return taskFuture;
+    }
+
+    /**
+     * 调度超时检查
+     */
+    private void scheduleTimeoutCheck(String fileName, CompletableFuture<Boolean> taskFuture,
+                                      Future<?> future, String outputFilePath) {
+        virtualThreadExecutor.submit(() -> {
+            try {
+                // 等待任务完成或超时
+                taskFuture.get(conversionTimeout, TimeUnit.SECONDS);
+                // 正常完成，不需要额外处理
+            } catch (TimeoutException e) {
+                handleConversionTimeout(fileName, taskFuture, future, outputFilePath);
+            } catch (Exception e) {
+                handleConversionException(fileName, taskFuture, e);
+            }
+        });
+    }
+
+    /**
+     * 处理转换超时
+     */
+    private void handleConversionTimeout(String fileName, CompletableFuture<Boolean> taskFuture,
+                                         Future<?> future, String outputFilePath) {
+        logger.error("CAD转换超时，取消任务: {}, 超时时间: {}秒", fileName, conversionTimeout);
+
+        // 标记为超时（最终状态）
+        FileConvertStatusManager.markTimeout(fileName);
+
+        // 取消正在运行的任务
+        cancelRunningTask(fileName, future);
+
+        // 删除可能已经生成的不完整文件
+        deleteIncompleteFile(outputFilePath);
+
+        // 完成Future
+        taskFuture.complete(false);
+    }
+
+    /**
+     * 处理转换异常
+     */
+    private void handleConversionException(String fileName, CompletableFuture<Boolean> taskFuture,
+                                           Exception e) {
+        logger.error("CAD转换异常: {}", fileName, e);
+        // 标记为失败（最终状态）
+        FileConvertStatusManager.markError(fileName, "转换任务异常: " + e.getMessage());
+        taskFuture.complete(false);
+    }
+
+    /**
+     * 取消正在运行的任务
+     */
+    private void cancelRunningTask(String fileName, Future<?> future) {
+        if (future != null) {
+            boolean cancelled = future.cancel(true);
+            logger.info("尝试取消任务 {}: {}", fileName, cancelled ? "成功" : "失败");
+        }
+    }
+
+    /**
+     * 带并发控制的CAD转换
+     */
+    private boolean convertCadWithConcurrencyControl(String inputFilePath, String outputFilePath,
+                                                     String cadPreviewType, FileAttribute fileAttribute)
+            throws Exception {
+        String fileName = new File(inputFilePath).getName();
+        long acquireStartTime = System.currentTimeMillis();
+
+        // 获取并发许可
+        if (!concurrentLimit.tryAcquire(30, TimeUnit.SECONDS)) {
+            long acquireTime = System.currentTimeMillis() - acquireStartTime;
+            logger.warn("获取并发许可超时，文件: {}, 等待时间: {}ms", fileName, acquireTime);
+            FileConvertStatusManager.updateProgress(fileName, "系统繁忙，等待资源中...", 15);
+            throw new TimeoutException("系统繁忙，请稍后重试");
+        }
+
+        long acquireTime = System.currentTimeMillis() - acquireStartTime;
+        logger.debug("获取并发许可成功: {}, 等待时间: {}ms", fileName, acquireTime);
+
+        // 更新状态
+        FileConvertStatusManager.updateProgress(fileName, "已获取转换资源，开始转换", 20);
+
+        long conversionStartTime = System.currentTimeMillis();
 
         try {
-            // 验证输入参数
+            boolean result = performCadConversion(inputFilePath, outputFilePath, cadPreviewType, fileAttribute);
+
+            long conversionTime = System.currentTimeMillis() - conversionStartTime;
+            logger.debug("CAD转换核心完成: {}, 转换耗时: {}ms, 总耗时(含等待): {}ms",
+                    fileName, conversionTime, conversionTime + acquireTime);
+
+            return result;
+
+        } finally {
+            concurrentLimit.release();
+        }
+    }
+
+    /**
+     * 执行实际的CAD转换逻辑
+     */
+    private boolean performCadConversion(String inputFilePath, String outputFilePath,
+                                         String cadPreviewType, FileAttribute fileAttribute) {
+        final InterruptionTokenSource source = new InterruptionTokenSource();
+        String fileName = new File(inputFilePath).getName();
+        long totalStartTime = System.currentTimeMillis();
+        try {
+            // 1. 验证输入参数
+            long validationStartTime = System.currentTimeMillis();
+            FileConvertStatusManager.updateProgress(fileName, "正在验证文件参数", 25);
             if (!validateInputParameters(inputFilePath, outputFilePath, cadPreviewType)) {
+                long validationTime = System.currentTimeMillis() - validationStartTime;
+                logger.error("CAD转换参数验证失败: {}, 验证耗时: {}ms", fileName, validationTime);
+                FileConvertStatusManager.markError(fileName, "文件参数验证失败");
                 return false;
             }
+            long validationTime = System.currentTimeMillis() - validationStartTime;
 
-            // 创建输出选项
-            final SvgOptions svgOptions = new SvgOptions();
-            final PdfOptions pdfOptions = new PdfOptions();
-            final TiffOptions tiffOptions = new TiffOptions(TiffExpectedFormat.TiffJpegRgb);
-
-            // 创建输出目录
+            // 2. 创建输出目录
+            long directoryStartTime = System.currentTimeMillis();
+            FileConvertStatusManager.updateProgress(fileName, "正在准备输出目录", 30);
             createOutputDirectoryIfNeeded(outputFilePath, fileAttribute.isCompressFile());
+            long directoryTime = System.currentTimeMillis() - directoryStartTime;
 
-            File outputFile = new File(outputFilePath);
-
-            // 加载并转换CAD文件
+            // 3. 加载并转换CAD文件
+            long loadStartTime = System.currentTimeMillis();
+            FileConvertStatusManager.updateProgress(fileName, "正在加载CAD文件", 40);
             LoadOptions loadOptions = createLoadOptions();
+
             try (Image cadImage = Image.load(inputFilePath, loadOptions)) {
+                long loadTime = System.currentTimeMillis() - loadStartTime;
+                logger.debug("CAD文件加载完成: {}, 加载耗时: {}ms", fileName, loadTime);
 
+                FileConvertStatusManager.updateProgress(fileName, "CAD文件加载完成，开始渲染", 50);
+
+                // 4. 创建光栅化选项
+                long rasterizationStartTime = System.currentTimeMillis();
+                FileConvertStatusManager.updateProgress(fileName, "正在设置渲染参数", 60);
                 CadRasterizationOptions rasterizationOptions = createRasterizationOptions(cadImage);
-                configureOutputOptions(cadPreviewType, rasterizationOptions, source,
-                        svgOptions, pdfOptions, tiffOptions);
+                long rasterizationTime = System.currentTimeMillis() - rasterizationStartTime;
 
-                Callable<Boolean> conversionTask = createConversionTask(cadPreviewType, outputFile,
-                        cadImage, source,
-                        svgOptions, pdfOptions, tiffOptions);
+                // 5. 根据预览类型创建选项
+                long optionsStartTime = System.currentTimeMillis();
+                FileConvertStatusManager.updateProgress(fileName, "正在配置输出格式", 70);
+                var options = switch (cadPreviewType.toLowerCase()) {
+                    case "svg" -> createSvgOptions(rasterizationOptions, source);
+                    case "pdf" -> createPdfOptions(rasterizationOptions, source);
+                    case "tif", "tiff" -> createTiffOptions(rasterizationOptions, source);
+                    default -> throw new IllegalArgumentException("不支持的预览类型: " + cadPreviewType);
+                };
+                long optionsTime = System.currentTimeMillis() - optionsStartTime;
+                // 6. 保存转换结果
+                long saveStartTime = System.currentTimeMillis();
+                FileConvertStatusManager.updateProgress(fileName, "正在生成输出文件", 80);
+                saveConvertedFile(outputFilePath, cadImage, options);
+                long saveTime = System.currentTimeMillis() - saveStartTime;
+                FileConvertStatusManager.updateProgress(fileName, "文件转换完成", 90);
+                // 计算总时间
+                long totalTime = System.currentTimeMillis() - totalStartTime;
+                // 记录详细的性能信息
+                logger.debug("CAD转换详细耗时 - 文件: {}, 验证={}ms, 目录={}ms, 加载={}ms, 光栅化={}ms, 选项={}ms, 保存={}ms, 总耗时={}ms",
+                        fileName, validationTime, directoryTime, loadTime,
+                        rasterizationTime, optionsTime, saveTime, totalTime);
 
-                Future<Boolean> result = pool.submit(conversionTask);
+                logger.info("CAD转换完成: 总耗时: {}ms", totalTime);
 
-                return executeWithTimeout(result, source, cadImage, inputFilePath);
+                // SVG文件后处理
+                if ("svg".equalsIgnoreCase(cadPreviewType)) {
+                    if(ConfigConstants.getCadwatermark()){
+                        postProcessSvgFile(outputFilePath);
+                    }
+                }
+
+                // 转换成功，标记为完成
+                FileConvertStatusManager.updateProgress(fileName, "转换成功", 100);
+                // 短暂延迟后清理状态，给前端一个显示100%的机会
+                FileConvertStatusManager.convertSuccess(fileName);
+
+
+                return true;
             }
+
         } catch (Exception e) {
-            logger.error("CAD文件转换失败: {}", inputFilePath, e);
-            return false;
-        } finally {
-            // 确保资源释放
-            try {
-                source.dispose();
-            } catch (Exception e) {
-                logger.warn("释放CAD中断令牌资源失败", e);
+            long totalTime = System.currentTimeMillis() - totalStartTime;
+            logger.error("CAD转换执行失败: {}, 耗时: {}ms", fileName, totalTime, e);
+
+            // 检查是否已经标记为超时
+            FileConvertStatusManager.ConvertStatus status = FileConvertStatusManager.getConvertStatus(fileName);
+            if (status == null || status.getStatus() != FileConvertStatusManager.Status.TIMEOUT) {
+                FileConvertStatusManager.markError(fileName, "转换失败: " + e.getMessage());
             }
 
-            // SVG文件后处理
-            if ("svg".equals(cadPreviewType)) {
-                postProcessSvgFile(outputFilePath);
+            // 删除可能已创建的不完整文件
+            deleteIncompleteFile(outputFilePath);
+            return false;
+
+        } finally {
+            long cleanupStartTime = System.currentTimeMillis();
+            try {
+                cleanupResources(source);
+            } finally {
+                long cleanupTime = System.currentTimeMillis() - cleanupStartTime;
+                long totalTime = System.currentTimeMillis() - totalStartTime;
+                logger.debug("CAD转换资源清理完成: {}, 清理耗时: {}ms, 总耗时: {}ms",
+                        fileName, cleanupTime, totalTime);
             }
         }
     }
+
 
     /**
      * 验证输入参数
@@ -271,10 +341,10 @@ public class CadToPdfService {
      * 检查是否支持的预览类型
      */
     private boolean isSupportedPreviewType(String previewType) {
-        return "svg".equalsIgnoreCase(previewType) ||
-                "pdf".equalsIgnoreCase(previewType) ||
-                "tif".equalsIgnoreCase(previewType) ||
-                "tiff".equalsIgnoreCase(previewType);
+        return switch (previewType.toLowerCase()) {
+            case "svg", "pdf", "tif", "tiff" -> true;
+            default -> false;
+        };
     }
 
     /**
@@ -284,16 +354,11 @@ public class CadToPdfService {
         if (!isCompressFile) {
             return;
         }
-
         File outputFile = new File(outputFilePath);
         File parentDir = outputFile.getParentFile();
-
         if (parentDir != null && !parentDir.exists()) {
-            boolean created = parentDir.mkdirs();
-            if (created) {
-                logger.debug("创建输出目录: {}", parentDir.getAbsolutePath());
-            } else {
-                logger.warn("无法创建输出目录: {}", parentDir.getAbsolutePath());
+            if (!parentDir.mkdirs()) {
+                throw new RuntimeException("无法创建输出目录: " + parentDir.getAbsolutePath());
             }
         }
     }
@@ -313,7 +378,6 @@ public class CadToPdfService {
     private CadRasterizationOptions createRasterizationOptions(Image cadImage) {
         RasterizationQuality quality = new RasterizationQuality();
         RasterizationQualityValue highQuality = RasterizationQualityValue.High;
-
         quality.setArc(highQuality);
         quality.setHatch(highQuality);
         quality.setText(highQuality);
@@ -321,6 +385,10 @@ public class CadToPdfService {
         quality.setObjectsPrecision(highQuality);
         quality.setTextThicknessNormalization(true);
 
+        return getCadRasterizationOptions(cadImage, quality);
+    }
+
+    private static CadRasterizationOptions getCadRasterizationOptions(Image cadImage, RasterizationQuality quality) {
         CadRasterizationOptions options = new CadRasterizationOptions();
         options.setBackgroundColor(Color.getWhite());
         options.setPageWidth(cadImage.getWidth());
@@ -332,114 +400,73 @@ public class CadToPdfService {
         options.setDrawType(CadDrawTypeMode.UseObjectColor);
         options.setExportAllLayoutContent(true);
         options.setVisibilityMode(VisibilityMode.AsScreen);
-
         return options;
     }
 
     /**
-     * 配置输出选项
+     * 创建SVG选项
      */
-    private void configureOutputOptions(String previewType,
-                                        CadRasterizationOptions rasterizationOptions,
-                                        InterruptionTokenSource source,
-                                        SvgOptions svgOptions,
-                                        PdfOptions pdfOptions,
-                                        TiffOptions tiffOptions) {
+    private SvgOptions createSvgOptions(CadRasterizationOptions rasterizationOptions,
+                                        InterruptionTokenSource source) {
+        SvgOptions options = new SvgOptions();
+        options.setVectorRasterizationOptions(rasterizationOptions);
+        options.setInterruptionToken(source.getToken());
+        return options;
+    }
 
-        String type = previewType.toLowerCase();
-        switch (type) {
-            case "svg":
-                svgOptions.setVectorRasterizationOptions(rasterizationOptions);
-                svgOptions.setInterruptionToken(source.getToken());
-                break;
-            case "pdf":
-                pdfOptions.setVectorRasterizationOptions(rasterizationOptions);
-                pdfOptions.setInterruptionToken(source.getToken());
-                break;
-            case "tif":
-            case "tiff":
-                tiffOptions.setVectorRasterizationOptions(rasterizationOptions);
-                tiffOptions.setInterruptionToken(source.getToken());
-                break;
-            default:
-                throw new IllegalArgumentException("不支持的预览类型: " + previewType);
+    /**
+     * 创建PDF选项
+     */
+    private PdfOptions createPdfOptions(CadRasterizationOptions rasterizationOptions,
+                                        InterruptionTokenSource source) {
+        PdfOptions options = new PdfOptions();
+        options.setVectorRasterizationOptions(rasterizationOptions);
+        options.setInterruptionToken(source.getToken());
+        return options;
+    }
+
+    /**
+     * 创建TIFF选项
+     */
+    private TiffOptions createTiffOptions(CadRasterizationOptions rasterizationOptions,
+                                          InterruptionTokenSource source) {
+        TiffOptions options = new TiffOptions(TiffExpectedFormat.TiffJpegRgb);
+        options.setVectorRasterizationOptions(rasterizationOptions);
+        options.setInterruptionToken(source.getToken());
+        return options;
+    }
+
+    /**
+     * 保存转换后的文件
+     */
+    private void saveConvertedFile(String outputFilePath, Image cadImage, Object options)
+            throws IOException {
+        try (OutputStream outputStream = new FileOutputStream(outputFilePath)) {
+            switch (options) {
+                case SvgOptions svgOptions -> cadImage.save(outputStream, svgOptions);
+                case PdfOptions pdfOptions -> cadImage.save(outputStream, pdfOptions);
+                case TiffOptions tiffOptions -> cadImage.save(outputStream, tiffOptions);
+                case null, default -> throw new IllegalArgumentException("不支持的选项类型");
+            }
         }
     }
 
     /**
-     * 创建转换任务
+     * 获取最大并发限制
      */
-    private Callable<Boolean> createConversionTask(String previewType,
-                                                   File outputFile,
-                                                   Image cadImage,
-                                                   InterruptionTokenSource source,
-                                                   SvgOptions svgOptions,
-                                                   PdfOptions pdfOptions,
-                                                   TiffOptions tiffOptions) {
-
-        return () -> {
-            try (OutputStream outputStream = new FileOutputStream(outputFile)) {
-                String type = previewType.toLowerCase();
-
-                switch (type) {
-                    case "svg":
-                        cadImage.save(outputStream, svgOptions);
-                        break;
-                    case "pdf":
-                        cadImage.save(outputStream, pdfOptions);
-                        break;
-                    case "tif":
-                    case "tiff":
-                        cadImage.save(outputStream, tiffOptions);
-                        break;
-                    default:
-                        throw new IllegalStateException("不支持的预览类型: " + previewType);
-                }
-
-                logger.debug("CAD文件转换成功: {} -> {}", cadImage, outputFile.getPath());
-                return true;
-
-            } catch (IOException e) {
-                logger.error("保存转换结果失败: {}", outputFile.getPath(), e);
-                throw e;
-            } catch (Exception e) {
-                logger.error("CAD转换过程异常", e);
-                throw e;
-            }
-        };
-    }
-
-    /**
-     * 执行带超时的转换
-     */
-    private boolean executeWithTimeout(Future<Boolean> result,
-                                       InterruptionTokenSource source,
-                                       Image cadImage,
-                                       String inputFilePath) {
-        long timeout = getConversionTimeout();
-
+    private int getConcurrentLimit() {
         try {
-            Boolean success = result.get(timeout, TimeUnit.SECONDS);
-            return Boolean.TRUE.equals(success);
+            int threadCount = ConfigConstants.getCadThread();
+            if (threadCount <= 0) {
+                return Math.max(1, Runtime.getRuntime().availableProcessors());
+            }
 
-        } catch (TimeoutException e) {
-            logger.error("CAD转换超时，文件: {}，超时时间: {}秒", inputFilePath, timeout, e);
-            handleTimeout(result, source);
-            return false;
-
-        } catch (InterruptedException e) {
-            logger.error("CAD转换被中断，文件: {}", inputFilePath, e);
-            Thread.currentThread().interrupt();
-            handleInterruption(result);
-            return false;
-
-        } catch (ExecutionException e) {
-            logger.error("CAD转换执行异常，文件: {}", inputFilePath, e);
-            return false;
+            int maxThreads = Runtime.getRuntime().availableProcessors() * 4;
+            return Math.min(threadCount, maxThreads);
 
         } catch (Exception e) {
-            logger.error("CAD转换未知异常，文件: {}", inputFilePath, e);
-            return false;
+            logger.error("获取CAD并发限制失败", e);
+            return Math.max(1, Runtime.getRuntime().availableProcessors());
         }
     }
 
@@ -450,8 +477,7 @@ public class CadToPdfService {
         try {
             long timeout = Long.parseLong(ConfigConstants.getCadTimeout());
             if (timeout <= 0) {
-                timeout = 300L; // 默认5分钟
-                logger.warn("CAD转换超时时间配置无效，使用默认值: {}秒", timeout);
+                return 300L;
             }
             return timeout;
         } catch (NumberFormatException e) {
@@ -461,31 +487,25 @@ public class CadToPdfService {
     }
 
     /**
-     * 处理超时情况
+     * 清理资源
      */
-    private void handleTimeout(Future<Boolean> result, InterruptionTokenSource source) {
+    private void cleanupResources(InterruptionTokenSource source) {
         try {
-            source.interrupt();
+            if (source != null) {
+                source.dispose();
+            }
         } catch (Exception e) {
-            logger.warn("中断CAD转换过程失败", e);
-        }
-
-        try {
-            boolean cancelled = result.cancel(true);
-            logger.debug("超时任务取消结果: {}", cancelled ? "成功" : "失败");
-        } catch (Exception e) {
-            logger.warn("取消超时任务失败", e);
+            logger.warn("释放CAD中断令牌资源失败", e);
         }
     }
 
     /**
-     * 处理中断情况
+     * 删除不完整文件
      */
-    private void handleInterruption(Future<Boolean> result) {
-        try {
-            result.cancel(true);
-        } catch (Exception e) {
-            logger.warn("取消被中断的任务失败", e);
+    private void deleteIncompleteFile(String filePath) {
+        File file = new File(filePath);
+        if (file.exists() && !file.delete()) {
+            logger.warn("无法删除不完整文件: {}", filePath);
         }
     }
 
@@ -495,9 +515,87 @@ public class CadToPdfService {
     private void postProcessSvgFile(String outputFilePath) {
         try {
             RemoveSvgAdSimple.removeSvgAdFromFile(outputFilePath);
-            logger.debug("SVG文件后处理完成: {}", outputFilePath);
         } catch (Exception e) {
             logger.warn("SVG文件后处理失败: {}", outputFilePath, e);
+        }
+    }
+
+    /**
+     * 强制取消指定文件的转换任务
+     * @param fileName 文件名
+     * @return true: 取消成功; false: 取消失败或任务不存在
+     */
+    public boolean cancelConversion(String fileName) {
+        Future<?> future = runningTasks.get(fileName);
+        if (future != null) {
+            boolean cancelled = future.cancel(true);
+            if (cancelled) {
+                logger.info("成功取消转换任务: {}", fileName);
+                runningTasks.remove(fileName);
+                FileConvertStatusManager.markError(fileName, "转换已取消");
+            }
+            return cancelled;
+        }
+        return false;
+    }
+
+    /**
+     * 获取正在运行的任务数量
+     * @return 正在运行的任务数量
+     */
+    public int getRunningTaskCount() {
+        return runningTasks.size();
+    }
+
+    /**
+     * 获取所有正在运行的文件名
+     * @return 正在运行的文件名集合
+     */
+    public java.util.Set<String> getRunningTasks() {
+        return runningTasks.keySet();
+    }
+
+    /**
+     * 检查任务是否完成
+     * @param fileName 文件名
+     * @return true: 已完成; false: 未完成或不存在
+     */
+    public boolean isTaskCompleted(String fileName) {
+        AtomicBoolean completionStatus = taskCompletionStatus.get(fileName);
+        if (completionStatus != null) {
+            return completionStatus.get();
+        }
+
+        Future<?> future = runningTasks.get(fileName);
+        if (future != null) {
+            return future.isDone();
+        }
+
+        return true; // 如果任务不存在，视为已完成
+    }
+
+    /**
+     * 优雅关闭服务
+     */
+    @PreDestroy
+    public void shutdown() {
+        logger.info("开始关闭CAD转换服务，正在运行的任务数: {}", runningTasks.size());
+
+        for (String fileName : runningTasks.keySet()) {
+            cancelConversion(fileName);
+        }
+
+        if (virtualThreadExecutor != null && !virtualThreadExecutor.isShutdown()) {
+            try {
+                virtualThreadExecutor.shutdown();
+                if (!virtualThreadExecutor.awaitTermination(60, TimeUnit.SECONDS)) {
+                    virtualThreadExecutor.shutdownNow();
+                }
+                logger.info("CAD转换服务已关闭");
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                virtualThreadExecutor.shutdownNow();
+            }
         }
     }
 }
