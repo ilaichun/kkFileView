@@ -7,6 +7,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.util.ObjectUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.HtmlUtils;
@@ -459,6 +461,78 @@ public class WebUtils {
             LOGGER.error("获取认证权限错误：",e);
         }
         return parts;
+    }
+
+    /**
+     * 获取Content-Type
+     */
+
+    public static String headersType(ClientHttpResponse fileResponse) {
+        if (fileResponse == null) {
+            return null;
+        }
+        HttpHeaders headers = fileResponse.getHeaders();
+        if (headers == null) {
+            return null;
+        }
+        String contentTypeStr = null;
+        try {
+            // 直接获取Content-Type头字符串
+            contentTypeStr = headers.getFirst(HttpHeaders.CONTENT_TYPE);
+            if (contentTypeStr == null || contentTypeStr.isEmpty()) {
+                return null;
+            }
+            // 解析为MediaType对象
+            MediaType mediaType = MediaType.parseMediaType(contentTypeStr);
+            // 返回主类型和子类型，忽略参数
+            return mediaType.getType() + "/" + mediaType.getSubtype();
+        } catch (Exception e) {
+            // 如果解析失败，尝试简单的字符串处理
+            if (contentTypeStr != null) {
+                // 移除分号及后面的参数
+                int semicolonIndex = contentTypeStr.indexOf(';');
+                if (semicolonIndex > 0) {
+                    return contentTypeStr.substring(0, semicolonIndex).trim();
+                }
+                return contentTypeStr.trim();
+            }
+            return null;
+        }
+    }
+
+    /**
+     * 判断文件是否需要校验MIME类型
+     * @param suffix 文件后缀
+     * @return 是否需要校验
+     */
+    public static boolean isMimeCheckRequired(String suffix) {
+        if (suffix == null) {
+            return false;
+        }
+        String lowerSuffix = suffix.toLowerCase();
+        return Arrays.asList(
+                "doc", "docx", "ppt", "pptx", "pdf", "dwg",
+                "dxf", "dwf", "psd", "wps", "xlsx", "xls",
+                "rar", "zip"
+        ).contains(lowerSuffix);
+    }
+
+    /**
+     * 校验文件MIME类型是否有效
+     * @param contentType 响应头中的Content-Type
+     * @param suffix 文件后缀
+     * @return 是否有效
+     */
+    public static boolean isValidMimeType(String contentType, String suffix) {
+        if (contentType == null || suffix == null) {
+            return true;
+        }
+
+        // 如果检测到是HTML、文本或JSON格式，则认为是错误响应
+        String lowerContentType = contentType.toLowerCase();
+        return !lowerContentType.contains("text/html")
+                && !lowerContentType.contains("text/plain")
+                && !lowerContentType.contains("application/json");
     }
 
     /**

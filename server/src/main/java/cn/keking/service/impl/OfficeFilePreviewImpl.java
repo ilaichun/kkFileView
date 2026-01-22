@@ -67,7 +67,10 @@ public class OfficeFilePreviewImpl implements FilePreview {
         String outFilePath = fileAttribute.getOutFilePath();  //转换后生成文件的路径
 
         // 查询转换状态
-        checkAndHandleConvertStatus(model, fileName, cacheName,fileAttribute);
+        String convertStatusResult = checkAndHandleConvertStatus(model, fileName, cacheName, fileAttribute);
+        if (convertStatusResult != null) {
+            return convertStatusResult;
+        }
 
         if (!officePreviewType.equalsIgnoreCase("html")) {
             if (ConfigConstants.getOfficeTypeWeb().equalsIgnoreCase("web")) {
@@ -307,9 +310,11 @@ public class OfficeFilePreviewImpl implements FilePreview {
     /**
      * 异步方法
      */
-    public  String  checkAndHandleConvertStatus(Model model, String fileName, String cacheName, FileAttribute fileAttribute){
+    public String checkAndHandleConvertStatus(Model model, String fileName, String cacheName, FileAttribute fileAttribute) {
         FileConvertStatusManager.ConvertStatus status = FileConvertStatusManager.getConvertStatus(cacheName);
         int refreshSchedule = ConfigConstants.getTime();
+        boolean forceUpdatedCache = fileAttribute.forceUpdatedCache();
+
         if (status != null) {
             if (status.getStatus() == FileConvertStatusManager.Status.CONVERTING) {
                 // 正在转换中，返回等待页面
@@ -318,11 +323,27 @@ public class OfficeFilePreviewImpl implements FilePreview {
                 model.addAttribute("message", status.getRealTimeMessage());
                 return WAITING_FILE_PREVIEW_PAGE;
             } else if (status.getStatus() == FileConvertStatusManager.Status.TIMEOUT) {
-                // 超时状态，不允许重新转换
-                return otherFilePreview.notSupportedFile(model, fileAttribute, "文件转换已超时，无法继续转换");
+                // 超时状态，检查是否有强制更新命令
+                if (forceUpdatedCache) {
+                    // 强制更新命令，清除状态，允许重新转换
+                    FileConvertStatusManager.convertSuccess(cacheName);
+                    logger.info("强制更新命令跳过超时状态，允许重新转换: {}", cacheName);
+                    return null; // 返回null表示继续执行
+                } else {
+                    // 没有强制更新，不允许重新转换
+                    return otherFilePreview.notSupportedFile(model, fileAttribute, "文件转换已超时，无法继续转换");
+                }
             } else if (status.getStatus() == FileConvertStatusManager.Status.FAILED) {
-                // 失败状态，不允许重新转换
-                return otherFilePreview.notSupportedFile(model, fileAttribute, "文件转换失败，无法继续转换");
+                // 失败状态，检查是否有强制更新命令
+                if (forceUpdatedCache) {
+                    // 强制更新命令，清除状态，允许重新转换
+                    FileConvertStatusManager.convertSuccess(cacheName);
+                    logger.info("强制更新命令跳过失败状态，允许重新转换: {}", cacheName);
+                    return null; // 返回null表示继续执行
+                } else {
+                    // 没有强制更新，不允许重新转换
+                    return otherFilePreview.notSupportedFile(model, fileAttribute, "文件转换失败，无法继续转换");
+                }
             }
         }
         return null;
