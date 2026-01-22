@@ -45,7 +45,6 @@
 
     // 添加加载状态管理
     let isLoading = false;
-    let loadingTask = null;
 
 </script>
 <style>
@@ -159,9 +158,10 @@
     }
 
     var url = '${finalUrl}';
+   	var kkagent = '${kkagent}';
     var baseUrl = '${baseUrl}'.endsWith('/') ? '${baseUrl}' : '${baseUrl}' + '/';
-    if (!url.startsWith(baseUrl)) {
-        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url));
+    if (kkagent === 'true' || !url.startsWith(baseUrl)) {
+        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url))+ "&key=${kkkey}";
     }
 
     let mask = document.getElementById("lucky-mask-demo");
@@ -223,9 +223,7 @@
             updateProgress(30);
             
             // 使用异步方式加载
-           await new Promise(resolve => setTimeout(resolve, 100)); // 给UI更新一点时间
-            
-       
+            await new Promise(resolve => setTimeout(resolve, 100)); // 给UI更新一点时间
             
             // 或者使用现有的同步方法，但放在setTimeout中避免阻塞
             await transformWithTimeout(value, name);
@@ -273,21 +271,22 @@
                                         print: true,
                                         exportXlsx: true,
                                     },
-                                    allowCopy: true,
-                                    showtoolbar: true,
-                                    showinfobar: false,
-                                    showsheetbar: true,
-                                    showstatisticBar: true,
-                                    sheetBottomConfig: true,
-                                    allowEdit: true,
-                                    enableAddRow: false,
-                                    enableAddCol: false,
-                                    userInfo: false,
-                                    showRowBar: true,
-                                    showColumnBar: false,
-                                    sheetFormulaBar: false,
-                                    enableAddBackTop: true,
-                                    forceCalculation: false,
+                                   allowCopy: true, // 是否允许拷贝
+                showtoolbar:  ${xlsxshowtoolbar?string('true','false')},  // 是否显示工具栏
+                showinfobar: true, // 是否显示顶部信息栏
+                // myFolderUrl: "/",//作用：左上角<返回按钮的链接
+                showsheetbar: true, // 是否显示底部sheet页按钮
+                showstatisticBar: true, // 是否显示底部计数栏
+                sheetBottomConfig: true, // sheet页下方的添加行按钮和回到顶部按钮配置
+                allowEdit: ${(xlsxallowEdit!false)?string('true','false')},// 是否允许前台编辑
+                enableAddRow: false, // 允许增加行
+                enableAddCol: false, // 允许增加列
+                userInfo: false, // 右上角的用户信息展示样式
+                showRowBar: true, // 是否显示行号区域
+                showColumnBar: false, // 是否显示列号区域
+                sheetFormulaBar: false, // 是否显示公式栏
+                enableAddBackTop: true,//返回头部按钮
+                forceCalculation: false, //下面是导出插件 默认关闭
                                     data: exportJson.sheets,
                                     title: exportJson.info.name,
                                     userInfo: exportJson.info.name.creator,
@@ -305,50 +304,12 @@
                                 reject(err);
                             }
                         });
-                    }, 100);
+                    });
                     
                 } catch (error) {
                     reject(error);
                 }
             }, 100);
-        });
-    }
-
- 
-
-    // 初始化Luckysheet
-    function initializeLuckysheet(exportJson) {
-        if (!exportJson.sheets || exportJson.sheets.length === 0) {
-            throw new Error("读取excel文件内容失败!");
-        }
-        
-        window.luckysheet.destroy();
-        window.luckysheet.create({
-            container: 'luckysheet',
-            lang: "zh",
-            showtoolbarConfig:{
-                image: true,
-                print: true,
-                exportXlsx: true,
-            },
-            allowCopy: true,
-            showtoolbar: true,
-            showinfobar: false,
-            showsheetbar: true,
-            showstatisticBar: true,
-            sheetBottomConfig: true,
-            allowEdit: true,
-            enableAddRow: false,
-            enableAddCol: false,
-            userInfo: false,
-            showRowBar: true,
-            showColumnBar: false,
-            sheetFormulaBar: false,
-            enableAddBackTop: true,
-            forceCalculation: false,
-            data: exportJson.sheets,
-            title: exportJson.info.name,
-            userInfo: exportJson.info.name.creator,
         });
     }
 
@@ -367,14 +328,6 @@
             console.log('用户取消了加载');
         }
     });
-
-    // 打印时，获取luckysheet指定区域html内容
-    function to_print() {
-        const html = luckysheet.getRangeHtml();
-        document.querySelector('#print-html').innerHTML = html;
-        document.querySelector('#print-area').style.display = 'block';
-        document.querySelector('#button-area').style.display = 'none';
-    }
 </script>
 </body>
 </html>

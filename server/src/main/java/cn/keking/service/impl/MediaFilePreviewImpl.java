@@ -97,8 +97,10 @@ public class MediaFilePreviewImpl implements FilePreview {
                 try {
                     // 启动异步转换，并添加回调处理
                     startAsyncConversion(filePath, outFilePath, cacheName, fileAttribute);
+					int refreshSchedule = ConfigConstants.getTime();
                     // 返回等待页面
                     model.addAttribute("fileName", fileName);
+					model.addAttribute("time", refreshSchedule);
                     model.addAttribute("message", "视频文件正在转换中，请稍候...");
                     return WAITING_FILE_PREVIEW_PAGE;
                 } catch (Exception e) {

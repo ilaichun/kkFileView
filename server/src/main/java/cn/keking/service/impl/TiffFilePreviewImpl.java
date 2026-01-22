@@ -70,8 +70,10 @@ public class TiffFilePreviewImpl implements FilePreview {
                 try {
                     // 启动异步转换
                     startAsyncTiffConversion(filePath, outFilePath, cacheName, fileName, fileAttribute, tifPreviewType, forceUpdatedCache);
+					int refreshSchedule = ConfigConstants.getTime();
                     // 返回等待页面
                     model.addAttribute("fileName", fileName);
+					model.addAttribute("time", refreshSchedule);
                     model.addAttribute("message", "文件正在转换中，请稍候...");
                     return WAITING_FILE_PREVIEW_PAGE;
                 } catch (Exception e) {

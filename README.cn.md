@@ -9,18 +9,18 @@
 7. 支持 pdf ,ofd, rtf 等文档
 8. 支持 xmind 软件模型文件
 9. 支持 bpmn 工作流文件
-10. 支持 eml 邮件文件
+10. 支持 eml, msg 邮件文件
 11. 支持 epub 图书文档
 12. 支持 obj, 3ds, stl, ply, gltf, glb, off, 3dm, fbx, dae, wrl, 3mf, ifc, brep, step, iges, fcstd, bim 等 3D 模型文件
 13. 支持 dwg, dxf, dwf, iges , igs, dwt, dng, ifc, dwfx, stl, cf2, plt 等 CAD 模型文件
 14. 支持 txt, xml(渲染), xbrl(渲染), md(渲染), java, php, py, js, css 等所有纯文本
 15. 支持 zip, rar, jar, tar, gzip, 7z 等压缩包
-16. 支持 jpg, jpeg, png, gif, bmp, ico, jfif, webp 等图片预览（翻转，缩放，镜像）
+16. 支持 jpg, jpeg, png, gif, bmp, ico, jfif, webp ,heic等图片预览（翻转，缩放，镜像）
 17. 支持 tif, tiff 图信息模型文件
 18. 支持 tga 图像格式文件
 19. 支持 svg 矢量图像格式文件
 20. 支持 mp3,wav,mp4,flv 等音视频格式文件
-21. 支持 avi,mov,rm,webm,ts,rm,mkv,mpeg,ogg,mpg,rmvb,wmv,3gp,ts,swf 等视频格式转码预览
+21. 支持 avi,mov,rm,webm,ts,rm,mkv,mpeg,ogg,mpg,rmvb,wmv,3gp,ts 等视频格式转码预览
 22. 支持 dcm 等医疗数位影像预览
 23. 支持 drawio 绘图预览
 
@@ -148,6 +148,47 @@ pdf预览模式预览效果如下
 ![输入图片说明](https://gitee.com/uploads/images/2017/1213/100221_ea15202e_492218.png "屏幕截图.png")
 
 ### 历史更新记录
+
+#### > 2026年01月20日，v5.0 版本发布 ：
+#### 优化内容
+1. xlsx 前端解析优化 - 提升Excel文件前端渲染性能
+2. 图片解析优化 - 改进图片处理机制
+3. tif 解析优化 - 增强TIF格式支持
+4. svg 解析优化 - 优化SVG矢量图渲染
+5. json 解析优化 - 改进JSON文件处理
+6. ftp多客户端接入优化 - 提升FTP服务兼容性
+7. 首页目录访问优化 - 采用post服务端分页机制
+8. marked 解析优化 - 改进Markdown渲染
+
+#### 新增功能
+1. msg邮件解析 - 新增msg格式邮件文件预览支持
+2. heic图片解析 - 新增HEIC格式图片预览支持
+3. 跨域方法 - 新增跨域处理机制
+4. 高亮方法 - 新增文本高亮功能
+5. 页码方法 - 新增文档页码控制
+6. AES加密方法 - 新增AES加密支持
+7. Basic鉴权方法 - 新增Basic认证机制
+8. 秘钥方法 - 新增密钥管理功能
+9. 防重复转换 - 新增重复文件转换防护
+10. 异步等待 - 新增异步处理机制
+11. 上传限制 - 新增不支持文件上传限制
+12. cadviewer转换方法 - 新增CAD查看器转换功能
+
+#### 修复问题
+1. 压缩包路径问题 - 修复压缩包内部路径处理
+2. 安全问题 - 修复安全漏洞
+3. 图片水印不全问题 - 修复水印显示不完整
+4. SSL自签证书接入问题 - 修复自签名证书兼容性
+
+#### 更新内容
+1. JDK版本要求 - 强制要求JDK 21及以上版本
+2. pdf前端解析更新 - 升级PDF前端渲染组件
+3. odf前端解析更新 - 升级ODF文档前端渲染
+4. 3D模型前端解析更新 - 升级3D模型查看器
+5. pdf后端异步转换优化 - 实现多线程异步转换
+6. tif后端异步转换优化 - 实现多线程异步转换
+7. 视频后端异步转换优化 - 实现多线程异步转换
+8. CAD后端异步转换优化 - 实现多线程异步转换
 
 #### > 2025年01月16日，v4.4.0 版本发布 ：
 

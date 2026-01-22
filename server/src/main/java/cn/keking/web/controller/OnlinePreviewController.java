@@ -197,9 +197,10 @@ public class OnlinePreviewController {
 
             RestTemplate restTemplate = new RestTemplate();
             restTemplate.setRequestFactory(factory);
+            String finalUrlPath = urlPath;
             RequestCallback requestCallback = request -> {
                 request.getHeaders().setAccept(Arrays.asList(MediaType.APPLICATION_OCTET_STREAM, MediaType.ALL));
-                WebUtils.applyBasicAuthHeaders(request.getHeaders(), fileAttribute);
+                WebUtils.applyBasicAuthHeaders(request.getHeaders(), finalUrlPath);
                 String proxyAuthorization = fileAttribute.getKkProxyAuthorization();
                 if(StringUtils.hasText(proxyAuthorization)){
                     Map<String, String> proxyAuthorizationMap = mapper.readValue(

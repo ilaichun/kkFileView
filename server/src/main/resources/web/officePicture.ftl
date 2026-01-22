@@ -53,9 +53,6 @@
      setTimeout(function() {
          // 滚动到指定页码
          scrollToPage(targetPage);
-         
-         // 显示当前页码指示器
-         showPageIndicator(targetPage);
      }, 100);
      
      // 初始化懒加载
@@ -68,7 +65,6 @@
      var imgAreas = document.querySelectorAll('.img-area');
      imgAreas.forEach(function(area, index) {
          area.onclick = function() {
-             showPageIndicator(index + 1);
          };
      });
      
@@ -113,26 +109,10 @@
          // 滚动到目标位置
          targetElement.scrollIntoView({behavior: 'smooth', block: 'start'});
          
-         // 显示页码指示器
-         showPageIndicator(pageNum);
      }
  }
  
- // 显示页码指示器
- function showPageIndicator(pageNum) {
-     var indicator = document.getElementById('pageIndicator');
-     var currentPageSpan = document.getElementById('currentPageNum');
-     
-     currentPageSpan.textContent = pageNum;
-     indicator.style.display = 'block';
-     
-     // 3秒后自动隐藏
-     clearTimeout(window.indicatorTimeout);
-     window.indicatorTimeout = setTimeout(function() {
-         indicator.style.display = 'none';
-     }, 3000);
- }
- 
+
  // 获取当前可见的页码
  function getCurrentPage() {
      var imgAreas = document.querySelectorAll('.img-area');
@@ -310,7 +290,6 @@
  // 滚动监听更新页码指示器
  window.addEventListener('scroll', function() {
      var currentPage = getCurrentPage();
-     showPageIndicator(currentPage);
  });
  
  </script>

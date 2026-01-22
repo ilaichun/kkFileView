@@ -78,7 +78,7 @@ public class CompressFileReader {
 
                     FileType type = FileType.typeFromUrl(filePathInsideArchive.toString());
                     if (type.equals(FileType.PICTURE)) {  //图片缓存到集合，为了特殊符号需要进行编码
-                        imgUrls.add(baseUrl + URLEncoder.encode(fileName + packagePath+"/"+ folderPath.relativize(filePathInsideArchive).toString().replace("\\", "/"), "UTF-8"));
+                        imgUrls.add(baseUrl + URLEncoder.encode(fileName + packagePath+"/"+ folderPath.relativize(filePathInsideArchive).toString().replace("\\", "/"), StandardCharsets.UTF_8).replaceAll("%2F", "/"));
                     }
                 }
             }

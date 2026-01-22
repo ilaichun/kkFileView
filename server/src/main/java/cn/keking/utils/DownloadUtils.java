@@ -97,9 +97,10 @@ public class DownloadUtils {
 
                     factory.setHttpClient(httpClient);
                     restTemplate.setRequestFactory(factory);
+                    String finalUrlStr = urlStr;
                     RequestCallback requestCallback = request -> {
                         request.getHeaders().setAccept(Arrays.asList(MediaType.APPLICATION_OCTET_STREAM, MediaType.ALL));
-                        WebUtils.applyBasicAuthHeaders(request.getHeaders(), fileAttribute);
+                        WebUtils.applyBasicAuthHeaders(request.getHeaders(), finalUrlStr);
                         String proxyAuthorization = fileAttribute.getKkProxyAuthorization();
                         if(StringUtils.hasText(proxyAuthorization)){
                             Map<String, String> proxyAuthorizationMap = mapper.readValue(

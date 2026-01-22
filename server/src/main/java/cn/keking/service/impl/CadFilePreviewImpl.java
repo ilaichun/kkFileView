@@ -6,10 +6,7 @@ import cn.keking.model.ReturnResponse;
 import cn.keking.service.CadToPdfService;
 import cn.keking.service.FileHandlerService;
 import cn.keking.service.FilePreview;
-import cn.keking.utils.DownloadUtils;
-import cn.keking.utils.FileConvertStatusManager;
-import cn.keking.utils.KkFileUtils;
-import cn.keking.utils.WebUtils;
+import cn.keking.utils.*;
 import cn.keking.web.filter.BaseUrlFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,12 +75,14 @@ public class CadFilePreviewImpl implements FilePreview {
             }
 
             String filePath = response.getContent();
+			 int refreshSchedule = ConfigConstants.getTime();
             if (StringUtils.hasText(outFilePath)) {
                 try {
                     // 启动异步转换，并添加回调处理
                     startAsyncConversion(filePath, outFilePath, cacheName, fileAttribute);
                     // 返回等待页面
                     model.addAttribute("fileName", fileName);
+					model.addAttribute("time", refreshSchedule);
                     model.addAttribute("message", "文件正在转换中，请稍候...");
                     return WAITING_FILE_PREVIEW_PAGE;
                 } catch (Exception e) {
@@ -101,14 +100,33 @@ public class CadFilePreviewImpl implements FilePreview {
      */
     private void startAsyncConversion(String filePath, String outFilePath,
                                       String cacheName, FileAttribute fileAttribute) {
+
+        //获取cad转换路径
+        String cadConverterPath = ConfigConstants.getCadConverterPath();
+        int conversionModule= ConfigConstants.getConversionModule();
+        if(cadConverterPath.equals("false")){
+            //默认aspose-cad
+            conversionModule = 1;
+       }
+        CompletableFuture<Boolean> conversionFuture;
         // 启动异步转换
-        CompletableFuture<Boolean> conversionFuture = cadtopdfservice.cadToPdfAsync(
-                filePath,
-                outFilePath,
-                cacheName,
-                ConfigConstants.getCadPreviewType(),
-                fileAttribute
-        );
+        if(conversionModule==2){
+            conversionFuture = cadtopdfservice.cadViewerConvert(
+                    filePath,
+                    outFilePath,
+                    cadConverterPath,
+                    ConfigConstants.getCadPreviewType(),
+                    cacheName
+            );
+        }else {
+            conversionFuture = cadtopdfservice.cadToPdfAsync(
+                    filePath,
+                    outFilePath,
+                    cacheName,
+                    ConfigConstants.getCadPreviewType(),
+                    fileAttribute
+            );
+        }
 
         // 添加转换完成后的回调
         conversionFuture.whenCompleteAsync((success, throwable) -> {
@@ -144,13 +162,18 @@ public class CadFilePreviewImpl implements FilePreview {
                                  FileAttribute fileAttribute) {
         cacheName = WebUtils.encodeFileName(cacheName);
         String baseUrl = BaseUrlFilter.getBaseUrl();
-
+        int conversionModule= ConfigConstants.getConversionModule();
         if ("tif".equalsIgnoreCase(cadPreviewType)) {
             model.addAttribute("currentUrl", cacheName);
             return TIFF_FILE_PREVIEW_PAGE;
         } else if ("svg".equalsIgnoreCase(cadPreviewType)) {
             model.addAttribute("currentUrl", cacheName);
-            return SVG_FILE_PREVIEW_PAGE;
+            if(conversionModule==2){
+                return CADVIEWER_FILE_PREVIEW_PAGE;
+            }else {
+                return SVG_FILE_PREVIEW_PAGE;
+            }
+
         }
 
         if (baseUrl != null && (OFFICE_PREVIEW_TYPE_IMAGE.equals(officePreviewType) ||

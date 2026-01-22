@@ -28,7 +28,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 /**
  * PDF转JPG服务 - JDK 21 高性能优化版本（使用虚拟线程和结构化并发）
@@ -59,8 +58,7 @@ public class PdfToJpgService {
     // JDK 21: 使用虚拟线程调度器
     private final ScheduledExecutorService virtualCacheCleanupScheduler;
 
-    // 使用读写锁保护缓存操作
-    private final ReentrantReadWriteLock cacheLock = new ReentrantReadWriteLock();
+
 
     // 加密PDF缓存记录类
     private static class EncryptedPdfCache {
@@ -286,49 +284,6 @@ public class PdfToJpgService {
         logger.info("缓存清理任务已启动（每5分钟执行一次）");
     }
 
-    /**
-     * 启动性能监控
-     */
-    private void startPerformanceMonitoring() {
-        // 每10分钟记录一次性能统计
-        virtualCacheCleanupScheduler.scheduleAtFixedRate(() -> {
-            try {
-                logPerformanceStatistics();
-            } catch (Exception e) {
-                logger.error("性能监控任务执行失败", e);
-            }
-        }, 5, 10, TimeUnit.MINUTES);
-    }
-
-    /**
-     * 记录性能统计信息
-     */
-    private void logPerformanceStatistics() {
-        try {
-            // 收集性能指标
-            int runningTasksCount = runningTasks.size();
-            int activeTasks = activeTaskCount.get();
-            int totalCompleted = totalCompletedTasks.get();
-            int cacheSize = encryptedPdfCacheMap.size();
-
-            // 计算内存使用
-            long totalMemory = Runtime.getRuntime().totalMemory();
-            long freeMemory = Runtime.getRuntime().freeMemory();
-            long usedMemory = totalMemory - freeMemory;
-
-            logger.info(
-                    "PDF转换服务性能统计 - 运行中任务数: {}, 活跃任务数: {}, 累计完成任务数: {}, " +
-                            "内存缓存数量: {}, 内存使用: {} MB / {} MB ({}%), 虚拟线程: {}",
-                    runningTasksCount, activeTasks, totalCompleted, cacheSize,
-                    usedMemory / 1024 / 1024, totalMemory / 1024 / 1024,
-                    (usedMemory * 100 / totalMemory),
-                    Thread.currentThread().isVirtual() ? "是" : "否"
-            );
-
-        } catch (Exception e) {
-            logger.error("记录性能统计时发生异常", e);
-        }
-    }
 
     /**
      * 监控缓存统计信息
@@ -528,83 +483,10 @@ public class PdfToJpgService {
     }
 
     /**
-     * PDF转JPG - 异步版本（虚拟线程优化）
-
-    public CompletableFuture<List<String>> pdf2jpgAsync(String fileNameFilePath, String pdfFilePath,
-                                                        String pdfName, FileAttribute fileAttribute) {
-        CompletableFuture<List<String>> future = new CompletableFuture<>();
-
-        // 尝试获取信号量，如果获取不到，则立即拒绝任务
-        if (!concurrentTaskSemaphore.tryAcquire()) {
-            future.completeExceptionally(new RejectedExecutionException("系统繁忙，请稍后再试"));
-            return future;
-        }
-
-        // JDK 21: 使用虚拟线程提交任务
-        Future<?> taskFuture = virtualThreadExecutor.submit(() -> {
-            try {
-                List<String> result = pdf2jpg(fileNameFilePath, pdfFilePath, pdfName, fileAttribute);
-                future.complete(result);
-            } catch (Exception e) {
-                future.completeExceptionally(e);
-            } finally {
-                // 必须在finally中释放信号量
-                concurrentTaskSemaphore.release();
-                runningTasks.remove(pdfName);
-            }
-        });
-
-        // 记录正在运行的任务
-        runningTasks.put(pdfName, taskFuture);
-
-        // 设置超时检查（使用虚拟线程）
-        scheduleVirtualTimeoutCheck(pdfName, future, taskFuture);
-
-        return future;
-    }
-     */
-    /**
-     * 虚拟线程超时检查
-     */
-    private void scheduleVirtualTimeoutCheck(String fileName, CompletableFuture<List<String>> taskFuture,
-                                             Future<?> future) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                int timeout = calculateTimeoutByFileName();
-                taskFuture.get(timeout, TimeUnit.SECONDS);
-            } catch (TimeoutException e) {
-                handleConversionTimeout(fileName, taskFuture, future);
-            } catch (Exception e) {
-                // 正常完成或异常
-            }
-        }, virtualThreadExecutor);
-    }
-
-    /**
-     * 处理转换超时
-     */
-    private void handleConversionTimeout(String fileName, CompletableFuture<List<String>> taskFuture,
-                                         Future<?> future) {
-        logger.error("PDF转换超时: {}", fileName);
-
-        // 取消正在运行的任务
-        if (future != null && !future.isDone()) {
-            boolean cancelled = future.cancel(true);
-            logger.info("尝试取消PDF转换任务 {}: {}", fileName, cancelled ? "成功" : "失败");
-        }
-
-        // 从运行任务列表中移除
-        runningTasks.remove(fileName);
-
-        // 完成Future
-        taskFuture.completeExceptionally(new TimeoutException("PDF转换超时: " + fileName));
-    }
-
-    /**
      * PDF转JPG - 高性能主方法
      */
     public List<String> pdf2jpg(String fileNameFilePath, String pdfFilePath,
-                                String pdfName, FileAttribute fileAttribute) throws Exception {
+                                FileAttribute fileAttribute) throws Exception {
         boolean forceUpdatedCache = fileAttribute.forceUpdatedCache();
         boolean usePasswordCache = fileAttribute.getUsePasswordCache();
         String filePassword = fileAttribute.getFilePassword();
@@ -951,12 +833,6 @@ public class PdfToJpgService {
         }
     }
 
-    /**
-     * 根据文件名计算超时时间
-     */
-    private int calculateTimeoutByFileName() {
-        return ConfigConstants.getPdfTimeoutMedium();
-    }
 
     /**
      * 按页码排序
@@ -975,107 +851,5 @@ public class PdfToJpgService {
         return sortedImageUrls;
     }
 
-    /**
-     * 强制取消指定文件的转换任务
-     */
-    public boolean cancelConversion(String fileName) {
-        Future<?> future = runningTasks.get(fileName);
-        if (future != null) {
-            boolean cancelled = future.cancel(true);
-            if (cancelled) {
-                logger.info("成功取消PDF转换任务: {}", fileName);
-                runningTasks.remove(fileName);
-            }
-            return cancelled;
-        }
-        return false;
-    }
 
-    /**
-     * 获取正在运行的任务数量
-     */
-    public int getRunningTaskCount() {
-        return runningTasks.size();
-    }
-
-    /**
-     * 获取所有正在运行的文件名
-     */
-    public Set<String> getRunningTasks() {
-        return new HashSet<>(runningTasks.keySet());
-    }
-
-    /**
-     * 获取缓存统计信息（用于监控）
-     */
-    public Map<String, Object> getCacheStatistics() {
-        Map<String, Object> stats = new HashMap<>();
-        cacheLock.readLock().lock();
-        try {
-            stats.put("cacheSize", encryptedPdfCacheMap.size());
-            stats.put("runningTasks", runningTasks.size());
-            stats.put("activeTasks", activeTaskCount.get());
-            stats.put("totalCompleted", totalCompletedTasks.get());
-
-            // 计算缓存过期情况
-            long expireTime = 10 * 60 * 1000L;
-            int expiredCount = 0;
-            for (EncryptedPdfCache cache : encryptedPdfCacheMap.values()) {
-                if (cache.isExpired(expireTime)) {
-                    expiredCount++;
-                }
-            }
-            stats.put("expiredCaches", expiredCount);
-
-        } finally {
-            cacheLock.readLock().unlock();
-        }
-        return stats;
-    }
-
-    /**
-     * 手动清理所有过期缓存（供管理接口调用）
-     */
-    public int cleanupAllExpiredCaches() {
-        try {
-            // 使用虚拟线程执行清理
-            Future<Integer> future = virtualThreadExecutor.submit(() -> {
-                long expireTime = 10 * 60 * 1000L;
-                List<String> expiredKeys = new ArrayList<>();
-
-                cacheLock.readLock().lock();
-                try {
-                    for (Map.Entry<String, EncryptedPdfCache> entry : encryptedPdfCacheMap.entrySet()) {
-                        if (entry.getValue().isExpired(expireTime)) {
-                            expiredKeys.add(entry.getKey());
-                        }
-                    }
-                } finally {
-                    cacheLock.readLock().unlock();
-                }
-
-                // 清理
-                int cleaned = 0;
-                for (String key : expiredKeys) {
-                    EncryptedPdfCache cache = encryptedPdfCacheMap.remove(key);
-                    if (cache != null) {
-                        try {
-                            deleteCacheFolder(cache.outputFolder());
-                            cleaned++;
-                        } catch (Exception e) {
-                            logger.warn("清理缓存文件失败: {}", cache.outputFolder(), e);
-                        }
-                    }
-                }
-
-                return cleaned;
-            });
-
-            return future.get(30, TimeUnit.SECONDS);
-
-        } catch (Exception e) {
-            logger.error("手动清理缓存失败", e);
-            return 0;
-        }
-    }
 }

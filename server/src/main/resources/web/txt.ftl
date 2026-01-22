@@ -12,89 +12,10 @@
 </head>
 <body>
 <input hidden id="textData" value="${textData}"/>
-<#if "${file.suffix?html}" == "htm" || "${file.suffix?html}" == "html"  || "${file.suffix?html}" == "shtml" >
-<div class="container">
-    <div class="panel panel-default">
-        <div class="panel-heading"> 
-            <h4 class="panel-title"> <strong><font color="red"><input class="GLOkBtn" type="button" value="运行html" onclick="loadXmlData();" /></font></strong>
-                <a data-toggle="collapse" data-parent="#accordion" onclick="loadText();">
-                    ${file.name}   
-                </a>
-            </h4> 
-        </div>
-        <div class="panel-body">
-            <div id="text"></div>
-        </div>
-    </div>
-</div>
-<script>
-    // 将Freemarker的布尔值传递给JavaScript
-    var scriptjs = ${scriptjs?c}; // ?c 将布尔值转换为字符串true/false
-    
-    /**
-     *加载普通文本
-     */
-    function loadText() {
-        var base64data = $("#textData").val()
-       var div = document.getElementById("text");
-        div.innerHTML = ""; //
-        var textData = Base64.decode(base64data);
-         textData = htmlttt(textData,1);
-        var textPreData = "<xmp style='background-color: #FFFFFF;overflow-y: scroll;border:none'>" + textData + "</xmp>";
-        $("#text").append(textPreData);
-    }
-    
-     function htmlttt (str,txt){ 
-             var s = "";
-             if(str.length == 0) return "";
-             s = str.replace(/&amp;/gi,"&");
-             s = s.replace(/&lt;/gi,"<");
-             s = s.replace(/&gt;/gi,">");
-             s = s.replace(/&nbsp;/gi," ");
-             s = s.replace(/&#39;/gi,"\'");
-             s = s.replace(/&quot;/gi,"\""); 
-             s = s.replace(/javascript/g,"javascript ");
-             if (txt === 2){
-              s = s.replace(/<script/gi, "&lt;script ");
-              s = s.replace(/javascript/g,"javascript ");
-              s = s.replace(/<\/script/gi, "&lt;/script ");
-              s = s.replace(/<iframe/gi, "&lt;iframe ");
-              s = s.replace(/<\/iframe/gi, "&lt;/iframe ");
-              s = s.replace(/confirm/gi, "c&onfirm");
-              s = s.replace(/alert/gi, "a&lert");
-              s = s.replace(/eval/gi, "e&val");
-             }
-             return s;  
-       } 
-    
-      /**
-     *加载运行
-     */
-    function loadXmlData() {
-        var base64data = $("#textData").val();
-        var textData = Base64.decode(base64data);
-        
-        // 直接使用JavaScript变量进行判断
-        if (scriptjs) {
-            textData = htmlttt(textData, 1);
-        } else {
-            textData = htmlttt(textData, 2);
-        }
-        
-        $('#text').html(textData);
-    }
-    
-    /**
-     * 初始化
-     */
-    window.onload = function () {
-        initWaterMark();
-        loadText();
-    }
-</script>
-<#else/>
 <link rel="stylesheet" href="highlight/highlight.css">
+<!-- 先加载fenye.js -->
 <script src="js/fenye.js" type="text/javascript"></script>
+<!-- 改为普通的container，而不是container-fluid -->
 <div class="container">
     <div class="panel panel-default">
         <div class="panel-heading">
@@ -108,26 +29,59 @@
         </div>
         <div id="divContent" class="panel-body">
         </div>
-		<div id="divPagenationx" class="black" >
-        </div>
     </div>
 </div>
 <script type="text/javascript">
-    var base64data = $("#textData").val()
-    var s = Base64.decode(base64data);
-    var kkkeyword = '${highlightall}';
-    var Length = 20000;
-    var page = '${page}';
-    var txt = "txt";
-    DHTMLpagenation(s, kkkeyword, Length, page, txt);
+    // 确保DOM加载完成
+    document.addEventListener('DOMContentLoaded', function() {
+        // 解码Base64数据
+        var base64data = document.getElementById("textData").value;
+        var s;
+        try {
+            s = Base64.decode(base64data);
+        } catch(e) {
+            console.error("Base64解码失败:", e);
+            s = "内容解码失败";
+        }
+        
+        // 获取参数
+        var kkkeyword = '${highlightall}';
+        var Length = 20000;
+        var page = '${page}' || 1;
+        var txt = "txt";
+        
+        console.log("初始化分页，参数:", { 
+            contentLength: s.length, 
+            kkkeyword: kkkeyword, 
+            Length: Length, 
+            page: page, 
+            txt: txt 
+        });
+        
+        // 初始化分页
+        if (typeof DHTMLpagenation === 'function') {
+            try {
+                DHTMLpagenation(s, kkkeyword, Length, page, txt);
+                console.log("分页初始化成功");
+            } catch(e) {
+                console.error("分页初始化失败:", e);
+                document.getElementById("divContent").innerHTML = "分页初始化失败: " + e.message;
+            }
+        } else {
+            console.error("DHTMLpagenation函数未定义");
+            document.getElementById("divContent").innerHTML = "分页功能加载失败，请刷新页面重试";
+        }
+    });
     
     /**
      * 初始化
      */
     window.onload = function () {
-        initWaterMark();
+        if (typeof initWaterMark === 'function') {
+            initWaterMark();
+        }
     }
 </script>
-</#if>
+
 </body>
 </html>

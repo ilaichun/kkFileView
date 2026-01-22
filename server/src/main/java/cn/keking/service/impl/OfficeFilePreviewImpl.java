@@ -112,8 +112,10 @@ public class OfficeFilePreviewImpl implements FilePreview {
                 try {
                     // 启动异步转换
                     startAsyncOfficeConversion(filePath, outFilePath, cacheName, fileAttribute, officePreviewType);
+                    int refreshSchedule = ConfigConstants.getTime();
                     // 返回等待页面
                     model.addAttribute("fileName", fileName);
+                    model.addAttribute("time", refreshSchedule);
                     model.addAttribute("message", "文件正在转换中，请稍候...");
                     return WAITING_FILE_PREVIEW_PAGE;
                 } catch (Exception e) {
@@ -160,7 +162,7 @@ public class OfficeFilePreviewImpl implements FilePreview {
                 if (OFFICE_PREVIEW_TYPE_IMAGE.equals(officePreviewType) ||
                         OFFICE_PREVIEW_TYPE_ALL_IMAGES.equals(officePreviewType)) {
                     FileConvertStatusManager.updateProgress(cacheName, "正在转换PDF为图片", 90);
-                    imageUrls = pdftojpgservice.pdf2jpg(outFilePath, outFilePath, cacheName, fileAttribute);
+                    imageUrls = pdftojpgservice.pdf2jpg(outFilePath, outFilePath, fileAttribute);
                 }
 
                 // 缓存处理

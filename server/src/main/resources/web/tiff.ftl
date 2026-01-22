@@ -34,7 +34,7 @@
 	var kkagent = '${kkagent}';
     var baseUrl = '${baseUrl}'.endsWith('/') ? '${baseUrl}' : '${baseUrl}' + '/';
     if (kkagent === 'true' || !url.startsWith(baseUrl)) {
-        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url));
+        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url))+ "&key=${kkkey}";
     }
     var myp = document.getElementById('tiff');
     let pages;
@@ -128,13 +128,11 @@ return;
         
 var html = "";
 html += "<div class=\"img-area\">";
-html += "<div class=\"image-container\">";
+html += "<div class=\"image-container\" style=\"position:relative;\">";
 html += '<img class="my-photo" id="page'+p+'" src="'+canvas.toDataURL('image/png')+'">';
-html += " <div class=\"button-container\">";
-html += "<button class=\"nszImg\">"+p+"/"+pages.length+"页</button>";
-html += "<button class=\"nszImg\" onclick=\"rotateImg('page"+p+"', false)\">逆时针</button>";
-html += "<button class=\"sszImg\" onclick=\"rotateImg('page"+p+"', true)\">顺时针</button>";
-html += "<button class=\"sszImg\" onclick=\"recoveryImg('page"+p+"', true)\">恢复</button>";
+html += "<div class=\"button-container\" style=\"position:absolute; bottom:5px; right:5px; opacity:0.1; transition:opacity 0.2s;\" onmouseover=\"this.style.opacity='0.9'\" onmouseout=\"this.style.opacity='0.1'\">";
+html += "<button class=\"nszImg\" style=\"margin-right:3px; font-size:11px; padding:2px 6px; background:rgba(255,255,255,0.9); border:1px solid #999; border-radius:2px; min-width:50px;\">"+p+"/"+pages.length+"页</button>";
+html += "<button class=\"sszImg\" onclick=\"rotateImg('page"+p+"', true)\" style=\"font-size:11px; padding:2px 6px; background:rgba(255,255,255,0.9); border:1px solid #999; border-radius:2px;\">↻</button>";
 html += "</div>";
 html += "</div>";
 html += "</div>";

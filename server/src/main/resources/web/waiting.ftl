@@ -35,7 +35,7 @@
     </div>
 
     <div class="countdown-section">
-      <p class="countdown-text">页面将在<span id="countdown">5</span>秒后自动刷新</p>
+      <p class="countdown-text">页面将在<span id="countdown">${time}</span>秒后自动刷新</p>
     </div>
 
     <div class="controls">
@@ -60,7 +60,7 @@
       <p style="margin-top: 5px;">如有问题，请联系技术支持</p>
     </div>
   </div><script>
-let countdown = 5;
+let countdown = ${time};
 let countdownInterval;
 
 // 删除forceUpdatedCache参数并更新URL

@@ -1,7 +1,6 @@
 package cn.keking.utils;
 
 import cn.keking.config.ConfigConstants;
-import cn.keking.model.FileAttribute;
 import io.mola.galimatias.GalimatiasParseException;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.lang3.StringUtils;
@@ -465,10 +464,8 @@ public class WebUtils {
     /**
      * 支持basic 下载方法
      */
-    public static void applyBasicAuthHeaders(HttpHeaders headers, FileAttribute fileAttribute) {
-        String url = fileAttribute.getUrl();
-        System.out.println(" T555.");
-        System.out.println(url);
+    public static void applyBasicAuthHeaders(HttpHeaders headers, String url) {
+
         // 从配置文件读取User-Agent，如果没有配置则使用默认值
         String customUserAgent=ConfigConstants.getUserAgent();
         String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";

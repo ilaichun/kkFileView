@@ -60,6 +60,18 @@ public class KkFileUtils {
         }
         return false;
     }
+    public static boolean validateFileNameLength(String fileName) {
+        if (fileName == null) {
+            return false;
+        }
+        // 文件名长度限制：255个字符（不包含路径）
+        int windowsMaxLength = 255;
+        if (fileName.length() > windowsMaxLength) {
+            System.err.println("文件名长度超过限制（255个字符）");
+            return false;
+        }
+        return true;
+    }
 
     /**
      * 检查是否是数字

@@ -18,9 +18,8 @@
         
         #svg-container {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 0;
+            left: 0;
             transition: transform 0.3s ease;
         }
         
@@ -121,19 +120,20 @@
     // 初始化变量
     let svgElement = null;
     let svgContainer = document.getElementById('svg-container');
+    let container = document.getElementById('container');
     let zoomLevel = 1;
     let rotationAngle = 0;
     let minZoom = 0.1;
     let maxZoom = 10;
     let zoomStep = 0.2;
     let isDragging = false;
-    let startX, startY, startLeft, startTop;
+    let startX, startY, startTranslateX, startTranslateY;
     let panStartX, panStartY;
 	var url = '${finalUrl}';
 	var kkagent = '${kkagent}';
     var baseUrl = '${baseUrl}'.endsWith('/') ? '${baseUrl}' : '${baseUrl}' + '/';
     if (kkagent === 'true' || !url.startsWith(baseUrl)) {
-        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url));
+        url = baseUrl + 'getCorsFile?urlPath=' + encodeURIComponent(Base64.encode(url))+ "&key=${kkkey}";
     }
 
     // 加载并显示SVG
@@ -160,6 +160,9 @@
                     svgElement.style.transformOrigin = 'center center';
                     svgElement.style.width = '100%';
                     svgElement.style.height = '100%';
+                    
+                    // 重置视图
+                    resetView();
                     
                     // 添加拖拽功能
                     setupDragAndDrop();
@@ -211,11 +214,20 @@
             isDragging = true;
             panStartX = e.touches[0].clientX;
             panStartY = e.touches[0].clientY;
-            startLeft = parseInt(svgContainer.style.left) || 0;
-            startTop = parseInt(svgContainer.style.top) || 0;
+            
+            const transform = svgContainer.style.transform;
+            const match = transform.match(/translate\(([^)]+)\)/);
+            if (match) {
+                const parts = match[1].split(',');
+                startTranslateX = parseFloat(parts[0]) || 0;
+                startTranslateY = parseFloat(parts[1]) || 0;
+            } else {
+                startTranslateX = 0;
+                startTranslateY = 0;
+            }
+            
             e.preventDefault();
         } else if (e.touches.length === 2) {
-            // 双指缩放处理
             e.preventDefault();
         }
     }
@@ -227,8 +239,7 @@
         const dx = e.touches[0].clientX - panStartX;
         const dy = e.touches[0].clientY - panStartY;
         
-        svgContainer.style.left = (startLeft + dx) + 'px';
-        svgContainer.style.top = (startTop + dy) + 'px';
+        updateTransform(startTranslateX + dx, startTranslateY + dy);
         e.preventDefault();
     }
 
@@ -242,8 +253,18 @@
         isDragging = true;
         startX = e.clientX;
         startY = e.clientY;
-        startLeft = parseInt(svgContainer.style.left) || 0;
-        startTop = parseInt(svgContainer.style.top) || 0;
+        
+        const transform = svgContainer.style.transform;
+        const match = transform.match(/translate\(([^)]+)\)/);
+        if (match) {
+            const parts = match[1].split(',');
+            startTranslateX = parseFloat(parts[0]) || 0;
+            startTranslateY = parseFloat(parts[1]) || 0;
+        } else {
+            startTranslateX = 0;
+            startTranslateY = 0;
+        }
+        
         svgContainer.style.cursor = 'grabbing';
     }
 
@@ -254,8 +275,7 @@
         const dx = e.clientX - startX;
         const dy = e.clientY - startY;
         
-        svgContainer.style.left = (startLeft + dx) + 'px';
-        svgContainer.style.top = (startTop + dy) + 'px';
+        updateTransform(startTranslateX + dx, startTranslateY + dy);
     }
 
     // 停止拖拽
@@ -276,22 +296,31 @@
             const delta = e.deltaY > 0 ? -zoomStep : zoomStep;
             const newZoom = Math.min(maxZoom, Math.max(minZoom, zoomLevel + delta));
             
-            // 计算缩放中心点相对于容器的位置
-            const containerX = mouseX - rect.width / 2;
-            const containerY = mouseY - rect.height / 2;
+            // 获取当前变换
+            const transform = svgContainer.style.transform;
+            let translateX = 0, translateY = 0;
+            const match = transform.match(/translate\(([^)]+)\)/);
+            if (match) {
+                const parts = match[1].split(',');
+                translateX = parseFloat(parts[0]) || 0;
+                translateY = parseFloat(parts[1]) || 0;
+            }
+            
+            // 计算缩放中心点相对于容器中心的位置
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            const offsetX = mouseX - centerX;
+            const offsetY = mouseY - centerY;
             
             // 更新缩放级别
             const zoomChange = newZoom / zoomLevel;
             zoomLevel = newZoom;
             
             // 调整位置以保持鼠标点位置不变
-            const currentLeft = parseInt(svgContainer.style.left) || 0;
-            const currentTop = parseInt(svgContainer.style.top) || 0;
+            translateX = translateX - offsetX * (zoomChange - 1);
+            translateY = translateY - offsetY * (zoomChange - 1);
             
-            svgContainer.style.left = (currentLeft - containerX * (zoomChange - 1)) + 'px';
-            svgContainer.style.top = (currentTop - containerY * (zoomChange - 1)) + 'px';
-            
-            updateTransform();
+            updateTransform(translateX, translateY);
             updateDisplay();
         });
     }
@@ -369,22 +398,45 @@
     function resetView() {
         zoomLevel = 1;
         rotationAngle = 0;
-        svgContainer.style.left = '50%';
-        svgContainer.style.top = '50%';
-        updateTransform();
+        
+        // 计算居中位置
+        const containerRect = container.getBoundingClientRect();
+        if (svgElement) {
+            const svgRect = svgContainer.getBoundingClientRect();
+            const translateX = (containerRect.width - svgRect.width) / 2;
+            const translateY = (containerRect.height - svgRect.height) / 2;
+            updateTransform(translateX, translateY);
+        } else {
+            updateTransform(0, 0);
+        }
+        
         updateDisplay();
     }
 
     // 更新变换
-    function updateTransform() {
-        let transform = 'translate(-50%, -50%)';
+    function updateTransform(translateX, translateY) {
+        let transform = '';
         
-        // 先应用缩放
+        // 如果有传入的平移值，使用它
+        if (translateX !== undefined && translateY !== undefined) {
+            transform += 'translate(' + translateX + 'px, ' + translateY + 'px)';
+        } else {
+            // 否则保持当前的平移
+            const currentTransform = svgContainer.style.transform;
+            const match = currentTransform.match(/translate\(([^)]+)\)/);
+            if (match) {
+                transform += match[0];
+            } else {
+                transform += 'translate(0px, 0px)';
+            }
+        }
+        
+        // 应用缩放
         if (zoomLevel !== 1) {
             transform += ' scale(' + zoomLevel + ')';
         }
         
-        // 再应用旋转
+        // 应用旋转
         if (rotationAngle !== 0) {
             transform += ' rotate(' + rotationAngle + 'deg)';
         }

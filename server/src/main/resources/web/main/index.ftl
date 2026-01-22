@@ -151,19 +151,19 @@
             <li>支持 vsd, vsdx 等 Visio 流程图文件</li>
             <li>支持 wmf, emf 等 Windows 系统图像文件</li>
             <li>支持 psd, eps 等 Photoshop 软件模型文件</li>
-            <li>支持 pdf ,ofd, rtf 等文档</li>
+            <li>支持 pdf, ofd, rtf 等文档</li>
             <li>支持 xmind 软件模型文件</li>
             <li>支持 bpmn 工作流文件</li>
-            <li>支持 eml 邮件文件</li>
+            <li>支持 eml, msg邮件文件</li>
             <li>支持 epub 图书文档</li>
             <li>支持 obj, 3ds, stl, ply, gltf, glb, off, 3dm, fbx, dae, wrl, 3mf, ifc, brep, step, iges, fcstd, bim 等 3D 模型文件</li>
             <li>支持 dwg, dxf, dwf, iges , igs, dwt, dng, ifc, dwfx, stl, cf2, plt  等 CAD 模型文件</li>
             <li>支持 txt, xml(渲染), md(渲染), java, php, py, js, css 等所有纯文本</li>
             <li>支持 zip, rar, jar, tar, gzip, 7z 等压缩包</li>
-            <li>支持 jpg, jpeg, png, gif, bmp, ico, jfif, webp 等图片预览（翻转，缩放，镜像）</li>
-            <li>支持 tif, tiff 图信息模型文件</li>
+            <li>支持 jpg, jpeg, png, gif, bmp, ico, jfif, webp, heic 等图片预览（翻转，缩放，镜像）</li>
+            <li>支持 tif, tiff 图信息模型文件（翻转，缩放）</li>
             <li>支持 tga 图像格式文件</li>
-            <li>支持 svg 矢量图像格式文件</li>
+            <li>支持 svg 矢量图像格式文件 （翻转，缩放）</li>
             <li>支持 mp3,wav,mp4,flv 等音视频格式文件</li>
             <li>支持 avi,mov,rm,webm,ts,rm,mkv,mpeg,ogg,mpg,rmvb,wmv,3gp,ts,swf 等视频格式转码预览</li>
             <li>支持 dcm 等医疗数位影像预览</li>
@@ -197,7 +197,7 @@
                     <input type="text" id="highlightall" name="highlightall" placeholder="高亮显示" style="width:50px;">
                     <input type="text" id="watermarkTxt" name="watermarkTxt" placeholder="插入水印" style="width:50px;">
                     <#if isshowkey>
-                        <input type="text" id="aeskey" name="key" placeholder="KK秘钥" style="width:60px;">
+                        <input type="text" id="kkkey" name="key" placeholder="KK秘钥" style="width:60px;">
                     </#if>
 
                     <input type="submit" value="预览" class="btn btn-success">
@@ -241,15 +241,6 @@
                         </form>
                     <#else>
                         <div class="disabled-upload">
-                            <form enctype="multipart/form-data" id="fileUpload" class="form-inline">
-                                <div class="input-group" style="width: 100%;">
-                                    <input type="file" id="file" name="file" class="form-control" style="flex: 1;" disabled/>
-                                    <span class="input-group-btn">
-                                        <input type="button" id="fileUploadBtn" class="btn btn-success" value="上传文件" disabled/>
-                                        <input type="button" id="newFolderBtn" class="btn btn-primary" style="margin-left:5px;" value="新建文件夹" disabled/>
-                                    </span>
-                                </div>
-                            </form>
                             <div class="alert alert-warning" style="margin-top: 10px; padding: 8px; font-size: 13px;">
                                 <span class="glyphicon glyphicon-info-sign"></span>
                                 文件上传功能已禁用。如需开启，请修改配置文件或联系管理员。
@@ -389,8 +380,8 @@
     function checkUrl(url) {
         <#if "${kkkey}" != "false" >
             var kkkey = document.getElementById("kkkey");
-            if (kkkey.value == "") {
-                alert("程序需要秘钥接入，请输入秘钥<#if isshowkey><#if "${kkkey}" != "false" >:${kkkey}</#if><#else>,联系系统管理员获取</#if>");
+            if (!kkkey || kkkey.value == "") {
+                alert("程序需要秘钥接入，请输入秘钥:<#if isshowkey><#if "${kkkey}" != "false" >${kkkey}</#if><#else>,联系系统管理员获取</#if>");
                 return false;
             }
         </#if>
@@ -460,6 +451,7 @@
             sidePagination: 'server',
             pagination: true,
             pageSize: ${homePageSize},
+			pageNumber: ${homePageNumber},//初始化加载页
             pageList: [5, 10, 20, 30, 50, 100],
             search: false,
             searchOnEnterKey: false,
@@ -785,7 +777,7 @@
         }
         
         // 添加KK秘钥参数
-        var key = $('#aeskey').val();
+        var key = $('#kkkey').val();
         if (key) {
             params.push('key=' + encodeURIComponent(key));
         }

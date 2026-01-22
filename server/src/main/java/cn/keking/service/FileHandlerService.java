@@ -264,8 +264,13 @@ public class FileHandlerService {
                     .replaceAll("%3F", "?")
                     .replaceAll("%26", "&")
                     .replaceAll("%3D", "=");
+
         }
         originFileName = KkFileUtils.htmlEscape(originFileName);  //文件名处理
+        if (!KkFileUtils.validateFileNameLength(originFileName)) {
+            // 处理逻辑：抛出异常、记录日志、返回错误等
+            throw new IllegalArgumentException("文件名超过系统限制");
+        }
         boolean isHtmlView = suffix.equalsIgnoreCase("xls") || suffix.equalsIgnoreCase("xlsx") || suffix.equalsIgnoreCase("csv") || suffix.equalsIgnoreCase("xlsm") || suffix.equalsIgnoreCase("xlt") || suffix.equalsIgnoreCase("xltm") || suffix.equalsIgnoreCase("et") || suffix.equalsIgnoreCase("ett") || suffix.equalsIgnoreCase("xlam");
         String cacheFilePrefixName = null;
         try {
