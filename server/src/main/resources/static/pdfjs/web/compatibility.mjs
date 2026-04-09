@@ -21,11 +21,11 @@ function installAtPolyfill(target) {
   Object.defineProperty(target.prototype, "at", {
     value(index) {
       const length = this.length >>> 0;
-      let relativeIndex = Number(index) || 0;
-      if (!Number.isFinite(relativeIndex)) {
+      let relativeIndex = Number(index);
+      if (Number.isNaN(relativeIndex)) {
         relativeIndex = 0;
       }
-      relativeIndex = relativeIndex < 0 ? Math.ceil(relativeIndex) : Math.floor(relativeIndex);
+      relativeIndex = Math.trunc(relativeIndex);
       const resolvedIndex = relativeIndex >= 0 ? relativeIndex : length + relativeIndex;
       if (resolvedIndex < 0 || resolvedIndex >= length) {
         return undefined;
