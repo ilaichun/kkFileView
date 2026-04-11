@@ -547,28 +547,31 @@ a:focus {
 }
 
 .preview-options {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 12px;
     margin-bottom: 14px;
-    overflow-x: auto;
-    padding-bottom: 4px;
+    overflow: visible;
+    padding-bottom: 0;
 }
 
 .preview-grid {
-    display: flex;
-    flex-wrap: nowrap;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(108px, 1fr));
     gap: 12px;
     margin-bottom: 0;
     overflow: visible;
     padding-bottom: 0;
-    flex: 1 1 auto;
-    min-width: 620px;
+    min-width: 0;
+    width: 100%;
 }
 
 .preview-grid .form-control {
-    flex: 1 1 0;
-    min-width: 150px;
+    width: 100%;
+    min-width: 0;
+    padding-left: 16px;
+    padding-right: 16px;
 }
 
 .preview-switches {
@@ -578,7 +581,7 @@ a:focus {
     margin-bottom: 0;
     overflow: visible;
     padding-bottom: 0;
-    flex: 0 0 auto;
+    width: 100%;
 }
 
 .preview-switches label {
@@ -586,7 +589,7 @@ a:focus {
     align-items: center;
     gap: 8px;
     margin: 0;
-    padding: 10px 14px;
+    padding: 10px 12px;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.76);
     border: 1px solid rgba(17, 19, 21, 0.08);
@@ -1264,6 +1267,10 @@ a:focus {
     .archive-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .preview-grid {
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
 }
 
 @media (max-width: 768px) {
@@ -1304,16 +1311,8 @@ a:focus {
         grid-template-columns: 1fr;
     }
 
-    .preview-grid {
-        flex-wrap: wrap;
-        min-width: 0;
-        overflow-x: visible;
-    }
-
     .preview-options {
-        display: block;
-        overflow-x: visible;
-        padding-bottom: 0;
+        grid-template-columns: 1fr;
     }
 
     .preview-url {

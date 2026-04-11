@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="bootstrap/css/bootstrap.min.css"/>
     <link rel="stylesheet" href="bootstrap-table/bootstrap-table.min.css"/>
     <link rel="stylesheet" href="css/theme.css"/>
-    <link rel="stylesheet" href="css/main-pages.css?v=v1-polish-20260411-3"/>
+    <link rel="stylesheet" href="css/main-pages.css?v=v1-polish-20260411-5"/>
     <script type="text/javascript" src="js/jquery-3.6.1.min.js"></script>
     <script type="text/javascript" src="js/jquery.form.min.js"></script>
     <script type="text/javascript" src="bootstrap/js/bootstrap.min.js"></script>
@@ -493,8 +493,8 @@
             search: false,
             searchOnEnterKey: false,
             showSearchButton: false,
-            showRefresh: true,
-            showColumns: true,
+            showRefresh: false,
+            showColumns: false,
             clickToSelect: true,
             locale: 'zh-CN',
             columns: [{
