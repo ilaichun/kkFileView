@@ -26,6 +26,20 @@ public class PdfViewerCompatibilityTests {
         assertTrue(workerScript.contains("import \"../web/compatibility.mjs\";"));
     }
 
+    @Test
+    void shouldOpenPdfPreviewWithThumbnailSidebarByDefault() throws IOException {
+        String pdfTemplate = readResource("/web/pdf.ftl");
+
+        assertTrue(pdfTemplate.contains("#page=1&pagemode=thumbs"));
+    }
+
+    @Test
+    void shouldPreferPdfForOfficePreviewByDefault() throws IOException {
+        String properties = readResource("/application.properties");
+
+        assertTrue(properties.contains("office.preview.type = ${KK_OFFICE_PREVIEW_TYPE:pdf}"));
+    }
+
     private String readResource(String resourcePath) throws IOException {
         try (InputStream inputStream = getClass().getResourceAsStream(resourcePath)) {
             assertNotNull(inputStream);

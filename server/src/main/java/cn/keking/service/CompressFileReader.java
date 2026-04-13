@@ -59,21 +59,26 @@ public class CompressFileReader {
             for (final ISimpleInArchiveItem item : simpleInArchive.getArchiveItems()) {
                 if (!item.isFolder()) {
                     final Path filePathInsideArchive = getFilePathInsideArchive(item, folderPath);
-                    ExtractOperationResult result = item.extractSlow(data -> {
-                        try (OutputStream out = new BufferedOutputStream(new FileOutputStream(filePathInsideArchive.toFile(), true))) {
-                            out.write(data);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
+                    Files.deleteIfExists(filePathInsideArchive);
+                    try (OutputStream out = new BufferedOutputStream(new FileOutputStream(filePathInsideArchive.toFile(), false))) {
+                        ExtractOperationResult result = item.extractSlow(data -> {
+                            try {
+                                out.write(data);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                            return data.length;
+                        }, filePassword);
+                        if (result != ExtractOperationResult.OK) {
+                            ExtractOperationResult result1 = ExtractOperationResult.valueOf("WRONG_PASSWORD");
+                            if (result1.equals(result)) {
+                                throw new Exception("Password");
+                            } else {
+                                throw new Exception("Failed to extract RAR file.");
+                            }
                         }
-                        return data.length;
-                    }, filePassword);
-                    if (result != ExtractOperationResult.OK) {
-                        ExtractOperationResult result1 = ExtractOperationResult.valueOf("WRONG_PASSWORD");
-                        if (result1.equals(result)) {
-                            throw new Exception("Password");
-                        }else {
-                            throw new Exception("Failed to extract RAR file.");
-                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
 
                     FileType type = FileType.typeFromUrl(filePathInsideArchive.toString());
